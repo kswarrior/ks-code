@@ -14,6 +14,7 @@ import { FSUtil } from "../fs-util"
 import { Global } from "../global"
 import { Location } from "../location"
 import { ModelsDev } from "../models-dev"
+import { HttpClient } from "effect/unstable/http"
 import { Npm } from "../npm"
 import { PluginV2 } from "../plugin"
 import { AccountPlugin } from "./account"
@@ -42,6 +43,7 @@ type Plugin = {
     | Config.Service
     | ModelsDev.Service
     | SkillV2.Service
+    | HttpClient.HttpClient
   >
 }
 
@@ -86,6 +88,7 @@ export const layer = Layer.effect(
           Effect.provideService(Global.Service, global),
           Effect.provideService(SkillV2.Service, skill),
           Effect.provideService(PluginV2.Service, plugin),
+          Effect.provideService(HttpClient.HttpClient, yield* HttpClient.HttpClient),
         ),
       })
     })
