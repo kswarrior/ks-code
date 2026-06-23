@@ -2,10 +2,9 @@ export * as SkillTool from "./skill"
 
 import path from "path"
 import { pathToFileURL } from "url"
-import { ToolFailure, toolText } from "@opencode-ai/llm"
+import { ToolFailure } from "@opencode-ai/llm"
 import { Effect, Layer, Schema } from "effect"
 import { FSUtil } from "../fs-util"
-import { PluginBoot } from "../plugin/boot"
 import { SkillV2 } from "../skill"
 import { PermissionV2 } from "../permission"
 import { Tool } from "./tool"
@@ -58,17 +57,15 @@ export const layer = Layer.effectDiscard(
   Effect.gen(function* () {
     const tools = yield* Tools.Service
     const fs = yield* FSUtil.Service
-    const boot = yield* PluginBoot.Service
     const skills = yield* SkillV2.Service
     const permission = yield* PermissionV2.Service
-    yield* boot.wait()
     yield* tools
       .register({
         [name]: Tool.make({
           description,
           input: Input,
           output: Output,
-          toModelOutput: ({ output }) => [toolText({ type: "text", text: output.output })],
+          toModelOutput: ({ output }) => [{ type: "text", text: output.output }],
           execute: (input, context) =>
             Effect.gen(function* () {
               const current = yield* skills.list()

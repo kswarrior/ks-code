@@ -218,7 +218,7 @@ function normalizeMessages(
   if (
     model.providerID === "mistral" ||
     model.api.id.toLowerCase().includes("mistral") ||
-    model.api.id.toLocaleLowerCase().includes("devstral")
+    model.api.id.toLowerCase().includes("devstral")
   ) {
     const scrub = (id: string) => {
       return id
@@ -478,6 +478,7 @@ export function message(msgs: ModelMessage[], model: Provider.Model, options: Re
 
 export function temperature(model: Provider.Model) {
   const id = model.id.toLowerCase()
+  if (id.includes("north-mini-code")) return 1.0
   if (id.includes("qwen")) return 0.55
   if (id.includes("claude")) return undefined
   if (id.includes("gemini")) return 1.0
@@ -605,7 +606,7 @@ function anthropicOpus47OrLater(apiId: string) {
 }
 
 function anthropicAdaptiveEfforts(apiId: string): string[] | null {
-  if (anthropicOpus47OrLater(apiId)) {
+  if (anthropicOpus47OrLater(apiId) || apiId.includes("fable-5")) {
     return ["low", "medium", "high", "xhigh", "max"]
   }
   if (
@@ -616,6 +617,10 @@ function anthropicAdaptiveEfforts(apiId: string): string[] | null {
     return ["low", "medium", "high", "max"]
   }
   return null
+}
+
+function anthropicOmitsThinking(apiId: string) {
+  return anthropicOpus47OrLater(apiId) || apiId.includes("fable-5")
 }
 
 function googleThinkingLevelEfforts(apiId: string) {
@@ -661,6 +666,9 @@ export function variants(model: Provider.Model): Record<string, Record<string, a
   if (!model.capabilities.reasoning) return {}
 
   const id = model.id.toLowerCase()
+  const glm52 = ["glm-5.2", "glm-5-2", "glm-5p2"].some(
+    (name) => id.includes(name) || model.api.id.toLowerCase().includes(name),
+  )
   if (
     model.api.id.toLowerCase().includes("minimax-m3") &&
     ["@ai-sdk/anthropic", "@ai-sdk/openai-compatible"].includes(model.api.npm)
@@ -670,15 +678,34 @@ export function variants(model: Provider.Model): Record<string, Record<string, a
       thinking: { thinking: { type: "adaptive" } },
     }
   }
-  const adaptiveOpus = anthropicOpus47OrLater(model.api.id)
+  const adaptiveThinkingOmitted = anthropicOmitsThinking(model.api.id)
   const adaptiveEfforts = anthropicAdaptiveEfforts(model.api.id)
+  if (glm52 && model.api.npm === "@openrouter/ai-sdk-provider") {
+    // OpenRouter maps xhigh to GLM-5.2's native max effort.
+    return {
+      high: { reasoning: { effort: "high" } },
+      xhigh: { reasoning: { effort: "xhigh" } },
+    }
+  }
+  if (glm52 && model.api.npm === "@ai-sdk/openai-compatible") {
+    return {
+      high: { reasoningEffort: "high" },
+      max: { reasoningEffort: "max" },
+    }
+  }
+  if (glm52 && model.api.npm === "@ai-sdk/anthropic") {
+    return {
+      high: { effort: "high" },
+      max: { effort: "max" },
+    }
+  }
   if (
     id.includes("deepseek-chat") ||
     id.includes("deepseek-reasoner") ||
     id.includes("deepseek-r1") ||
     id.includes("deepseek-v3") ||
     id.includes("minimax") ||
-    id.includes("glm") ||
+    (id.includes("glm") && !glm52) ||
     id.includes("kimi") ||
     id.includes("k2p") ||
     id.includes("qwen") ||
@@ -733,10 +760,10 @@ export function variants(model: Provider.Model): Record<string, Record<string, a
               {
                 thinking: {
                   type: "adaptive",
-                  // Opus 4.7+ flips the API default for `display` to "omitted", which
+                  // Newer adaptive-only models default `display` to "omitted", which
                   // returns empty thinking blocks. Force "summarized" so summaries
                   // survive (4.6/Sonnet 4.6 already default to "summarized").
-                  ...(adaptiveOpus ? { display: "summarized" } : {}),
+                  ...(adaptiveThinkingOmitted ? { display: "summarized" } : {}),
                 },
                 effort,
               },
@@ -826,6 +853,9 @@ export function variants(model: Provider.Model): Record<string, Record<string, a
     case "venice-ai-sdk-provider":
     // https://docs.venice.ai/overview/guides/reasoning-models#reasoning-effort
     case "@ai-sdk/openai-compatible":
+      if (model.api.id.toLowerCase().includes("north-mini-code")) {
+        return Object.fromEntries(["none", "high"].map((effort) => [effort, { reasoningEffort: effort }]))
+      }
       const efforts = [...WIDELY_SUPPORTED_EFFORTS]
       if (model.api.id.toLowerCase().includes("deepseek-v4")) {
         efforts.push("max")
@@ -880,7 +910,7 @@ export function variants(model: Provider.Model): Record<string, Record<string, a
             {
               thinking: {
                 type: "adaptive",
-                ...(adaptiveOpus ? { display: "summarized" } : {}),
+                ...(adaptiveThinkingOmitted ? { display: "summarized" } : {}),
               },
               effort,
             },
@@ -917,7 +947,7 @@ export function variants(model: Provider.Model): Record<string, Record<string, a
               reasoningConfig: {
                 type: "adaptive",
                 maxReasoningEffort: effort,
-                ...(adaptiveOpus ? { display: "summarized" } : {}),
+                ...(adaptiveThinkingOmitted ? { display: "summarized" } : {}),
               },
             },
           ]),
@@ -1007,7 +1037,7 @@ export function variants(model: Provider.Model): Record<string, Record<string, a
               adaptiveEfforts.map((effort) => [
                 effort,
                 {
-                  thinking: { type: "adaptive", ...(adaptiveOpus ? { display: "summarized" } : {}) },
+                  thinking: { type: "adaptive", ...(adaptiveThinkingOmitted ? { display: "summarized" } : {}) },
                   output_config: { effort },
                 },
               ]),
@@ -1105,6 +1135,7 @@ export function options(input: {
   }
 
   const modelId = input.model.api.id.toLowerCase()
+
   // MiniMax's Anthropic interface defaults thinking off, unlike Chat Completions.
   if (modelId.includes("minimax-m3") && input.model.api.npm === "@ai-sdk/anthropic") {
     result["thinking"] = { type: "adaptive" }
@@ -1277,6 +1308,96 @@ export function maxOutputTokens(model: Provider.Model, outputTokenMax = OUTPUT_T
   return Math.min(model.limit.output, outputTokenMax) || outputTokenMax
 }
 
+type JsonRecord = Record<string, unknown>
+
+function isPlainObject(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+// Mirrors Codex's Rust JSON schema compatibility lowering for OpenAI tool schemas.
+function sanitizeOpenAISchema(value: unknown): unknown {
+  const types = ["string", "number", "boolean", "integer", "object", "array", "null"]
+  const compositionKeys = ["anyOf", "oneOf", "allOf"]
+
+  // JSON Schema's boolean form (`true`/`false`) is unsupported by OpenAI tool schemas.
+  if (typeof value === "boolean") return { type: "string" }
+  if (Array.isArray(value)) return value.map(sanitizeOpenAISchema)
+  if (!isPlainObject(value)) return value
+
+  const result: JsonRecord = {}
+
+  if (typeof value.$ref === "string") result.$ref = value.$ref
+  if (typeof value.description === "string") result.description = value.description
+  if ("const" in value) result.enum = [value.const]
+  else if (Array.isArray(value.enum)) result.enum = value.enum
+
+  if (isPlainObject(value.properties)) {
+    result.properties = Object.fromEntries(
+      Object.entries(value.properties).map(([key, item]) => [key, sanitizeOpenAISchema(item)]),
+    )
+  }
+
+  if (Array.isArray(value.required)) {
+    result.required = value.required.filter((item) => typeof item === "string")
+  }
+
+  if ("items" in value) result.items = sanitizeOpenAISchema(value.items)
+
+  if ("additionalProperties" in value) {
+    result.additionalProperties =
+      typeof value.additionalProperties === "boolean"
+        ? value.additionalProperties
+        : sanitizeOpenAISchema(value.additionalProperties)
+  }
+
+  for (const key of compositionKeys) {
+    if (Array.isArray(value[key])) result[key] = value[key].map(sanitizeOpenAISchema)
+  }
+
+  for (const key of ["$defs", "definitions"]) {
+    if (isPlainObject(value[key])) {
+      result[key] = Object.fromEntries(
+        Object.entries(value[key]).map(([name, item]) => [name, sanitizeOpenAISchema(item)]),
+      )
+    }
+  }
+
+  const schemaTypes =
+    typeof value.type === "string"
+      ? types.includes(value.type)
+        ? [value.type]
+        : []
+      : Array.isArray(value.type)
+        ? value.type.filter((item) => typeof item === "string" && types.includes(item))
+        : []
+
+  if (schemaTypes.length === 0 && (typeof result.$ref === "string" || compositionKeys.some((key) => key in result))) {
+    return result
+  }
+
+  // MCP schemas may omit `type` while still using keywords that imply one.
+  // Keep the schema usable after unsupported keywords are dropped.
+  const inferredTypes =
+    schemaTypes.length > 0
+      ? schemaTypes
+      : ["properties", "required", "additionalProperties"].some((key) => key in value)
+        ? ["object"]
+        : ["items", "prefixItems"].some((key) => key in value)
+          ? ["array"]
+          : "enum" in result || "format" in value
+            ? ["string"]
+            : ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf"].some((key) => key in value)
+              ? ["number"]
+              : []
+
+  if (inferredTypes.length === 0) return {}
+
+  result.type = inferredTypes.length === 1 ? inferredTypes[0] : inferredTypes
+  if (inferredTypes.includes("object") && !("properties" in result)) result.properties = {}
+  if (inferredTypes.includes("array") && !("items" in result)) result.items = { type: "string" }
+  return result
+}
+
 export function schema(model: Provider.Model, schema: JSONSchema7): JSONSchema7 {
   /*
   if (["openai", "azure"].includes(providerID)) {
@@ -1295,6 +1416,11 @@ export function schema(model: Provider.Model, schema: JSONSchema7): JSONSchema7 
     }
   }
   */
+
+  if (model.api.npm === "@ai-sdk/openai" || model.api.npm === "@ai-sdk/azure") {
+    schema = sanitizeOpenAISchema(schema) as JSONSchema7
+    // Codex also applies lossy compaction above 4 KB; defer that until OpenCode needs the same schema budget.
+  }
 
   if (model.providerID === "moonshotai" || model.api.id.toLowerCase().includes("kimi")) {
     const sanitizeMoonshot = (obj: unknown): unknown => {
@@ -1363,6 +1489,24 @@ export function schema(model: Provider.Model, schema: JSONSchema7): JSONSchema7 
           result[key] = sanitizeGemini(value)
         } else {
           result[key] = value
+        }
+      }
+
+      // Gemini requires a single `type`, not a JSON Schema type array such as
+      // `["number","string"]` (emitted by some MCP servers). Plain `@ai-sdk/google`
+      // rewrites these into an `anyOf` of single-type schemas, but OpenAI-compatible
+      // transports (e.g. GitHub Copilot proxying to Gemini) forward them verbatim
+      // and the backend rejects the array form. Mirror the SDK: split non-null
+      // types into `anyOf`, and lift `null` into `nullable`.
+      if (Array.isArray(result.type)) {
+        const hasNull = result.type.includes("null")
+        const nonNull = result.type.filter((entry: unknown) => entry !== "null")
+        if (nonNull.length === 0) {
+          result.type = "null"
+        } else {
+          delete result.type
+          result.anyOf = nonNull.map((entry: unknown) => ({ type: entry }))
+          if (hasNull) result.nullable = true
         }
       }
 

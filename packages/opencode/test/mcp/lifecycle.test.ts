@@ -1,17 +1,24 @@
+import path from "node:path"
+import { pathToFileURL } from "node:url"
 import { expect, mock, beforeEach } from "bun:test"
+import { ListRootsRequestSchema, ToolListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js"
 import { Cause, Effect, Exit } from "effect"
 import type { MCP as MCPNS } from "../../src/mcp/index"
 import { testEffect } from "../lib/effect"
+import { TestInstance } from "../fixture/fixture"
 
 // --- Mock infrastructure ---
 
 // Per-client state for controlling mock behavior
 interface MockClientState {
   capabilities: { tools?: object; prompts?: object; resources?: object }
+  capabilitiesShouldThrow: boolean
   tools: Array<{ name: string; description?: string; inputSchema: object; outputSchema?: object }>
   listToolsCalls: number
   listPromptsCalls: number
   listResourcesCalls: number
+  getPromptTimeout?: number
+  readResourceTimeout?: number
   requestCalls: number
   listToolsShouldFail: boolean
   listToolsError: string
@@ -32,6 +39,8 @@ interface MockClientState {
     { resources: Array<{ name: string; uri: string; description?: string }>; nextCursor?: string }
   >
   closed: boolean
+  clientOptions?: { capabilities?: { roots?: { listChanged?: boolean } } }
+  requestHandlers: Map<unknown, (...args: any[]) => Promise<any>>
   notificationHandlers: Map<unknown, (...args: any[]) => any>
 }
 
@@ -44,6 +53,8 @@ let connectError = "Mock transport cannot connect"
 let clientCreateCount = 0
 // Tracks how many times transport.close() is called across all mock transports
 let transportCloseCount = 0
+// Captures the opts passed to each MockStdioTransport, keyed by lastCreatedClientName
+const stdioOptsByName = new Map<string, any>()
 
 function getOrCreateClientState(name?: string): MockClientState {
   const key = name ?? "default"
@@ -51,6 +62,7 @@ function getOrCreateClientState(name?: string): MockClientState {
   if (!state) {
     state = {
       capabilities: { tools: {}, prompts: {}, resources: {} },
+      capabilitiesShouldThrow: false,
       tools: [{ name: "test_tool", description: "A test tool", inputSchema: { type: "object", properties: {} } }],
       listToolsCalls: 0,
       listPromptsCalls: 0,
@@ -66,6 +78,7 @@ function getOrCreateClientState(name?: string): MockClientState {
       promptPages: {},
       resourcePages: {},
       closed: false,
+      requestHandlers: new Map(),
       notificationHandlers: new Map(),
     }
     clientStates.set(key, state)
@@ -77,8 +90,9 @@ function getOrCreateClientState(name?: string): MockClientState {
 class MockStdioTransport {
   stderr: null = null
   pid = 12345
-  // oxlint-disable-next-line no-useless-constructor
-  constructor(_opts: any) {}
+  constructor(opts: any) {
+    if (lastCreatedClientName) stdioOptsByName.set(lastCreatedClientName, opts)
+  }
   async start() {
     if (connectShouldHang) return new Promise<void>(() => {}) // never resolves
     if (connectShouldFail) throw new Error(connectError)
@@ -139,8 +153,10 @@ void mock.module("@modelcontextprotocol/sdk/client/index.js", () => ({
     _state!: MockClientState
     transport: any
 
-    constructor(_opts: any) {
+    constructor(_info: any, options?: MockClientState["clientOptions"]) {
       clientCreateCount++
+      this._state = getOrCreateClientState(lastCreatedClientName)
+      this._state.clientOptions = options
     }
 
     async connect(transport: { start: () => Promise<void> }) {
@@ -150,11 +166,16 @@ void mock.module("@modelcontextprotocol/sdk/client/index.js", () => ({
       this._state = getOrCreateClientState(lastCreatedClientName)
     }
 
+    setRequestHandler(schema: unknown, handler: (...args: any[]) => Promise<any>) {
+      this._state.requestHandlers.set(schema, handler)
+    }
+
     setNotificationHandler(schema: unknown, handler: (...args: any[]) => any) {
       this._state?.notificationHandlers.set(schema, handler)
     }
 
     getServerCapabilities() {
+      if (this._state?.capabilitiesShouldThrow) throw new Error("capability discovery failed")
       return this._state?.capabilities
     }
 
@@ -203,6 +224,16 @@ void mock.module("@modelcontextprotocol/sdk/client/index.js", () => ({
       return { resources: this._state?.resources ?? [] }
     }
 
+    async getPrompt(_params: unknown, options?: { timeout?: number }) {
+      if (this._state) this._state.getPromptTimeout = options?.timeout
+      return { messages: [] }
+    }
+
+    async readResource(params: { uri: string }, options?: { timeout?: number }) {
+      if (this._state) this._state.readResourceTimeout = options?.timeout
+      return { contents: [{ uri: params.uri, text: "test" }] }
+    }
+
     async close() {
       if (this._state) this._state.closed = true
     }
@@ -229,6 +260,42 @@ function statusName(status: Record<string, MCPNS.Status> | MCPNS.Status, server:
   if ("status" in status) return status.status
   return status[server]?.status
 }
+
+it.instance(
+  "advertises and lists the instance directory as its root",
+  () =>
+    MCP.Service.use((mcp: MCPNS.Interface) =>
+      Effect.gen(function* () {
+        const { directory } = yield* TestInstance
+        lastCreatedClientName = "roots"
+        yield* mcp.add("roots", { type: "local", command: ["echo", "test"] })
+
+        const state = getOrCreateClientState("roots")
+        expect(state.clientOptions?.capabilities?.roots).toEqual({})
+        expect(state.clientOptions?.capabilities?.roots?.listChanged).toBeUndefined()
+
+        const handler = state.requestHandlers.get(ListRootsRequestSchema)
+        expect(handler).toBeDefined()
+        const result = yield* Effect.promise(() => handler?.() ?? Promise.reject(new Error("roots handler missing")))
+        expect(result).toEqual({ roots: [{ uri: pathToFileURL(directory).href }] })
+      }),
+    ),
+  { config: { mcp: {} } },
+)
+
+it.instance(
+  "local mcp cwd resolves relative paths against instance directory",
+  () =>
+    MCP.Service.use((mcp: MCPNS.Interface) =>
+      Effect.gen(function* () {
+        const { directory } = yield* TestInstance
+        lastCreatedClientName = "rel-cwd"
+        yield* mcp.add("rel-cwd", { type: "local", command: ["echo", "test"], cwd: "plugins/sub" })
+        expect(stdioOptsByName.get("rel-cwd")?.cwd).toBe(path.resolve(directory, "plugins/sub"))
+      }),
+    ),
+  { config: { mcp: {} } },
+)
 
 // ========================================================================
 // Test: tools() are cached after connect
@@ -292,9 +359,9 @@ it.instance(
           command: ["echo", "test"],
         })
 
-        expect(Object.keys(yield* mcp.tools())).toEqual(["paged-server_tool-one", "paged-server_tool-two"])
+        expect(Object.keys(yield* mcp.tools())).toEqual(["mcp__paged-server__tool-one", "mcp__paged-server__tool-two"])
         expect(Object.keys(yield* mcp.prompts())).toEqual(["paged-server:prompt-one", "paged-server:prompt-two"])
-        expect(Object.keys(yield* mcp.resources())).toEqual(["paged-server:resource-one", "paged-server:resource-two"])
+        expect(Object.keys(yield* mcp.resources())).toEqual(["paged-server:test://one", "paged-server:test://two"])
         expect(serverState.listToolsCalls).toBe(2)
         expect(serverState.listPromptsCalls).toBe(2)
         expect(serverState.listResourcesCalls).toBe(2)
@@ -379,7 +446,7 @@ it.instance(
           { name: "next_tool", description: "next", inputSchema: { type: "object", properties: {} } },
         ]
 
-        const handler = Array.from(serverState.notificationHandlers.values())[0]
+        const handler = serverState.notificationHandlers.get(ToolListChangedNotificationSchema)
         expect(handler).toBeDefined()
         yield* Effect.promise(() => handler?.())
 
@@ -567,6 +634,31 @@ it.instance(
 )
 
 it.instance(
+  "returns failed and closes the client when SDK initialization throws",
+  () =>
+    MCP.Service.use((mcp: MCPNS.Interface) =>
+      Effect.gen(function* () {
+        lastCreatedClientName = "defective-server"
+        const serverState = getOrCreateClientState("defective-server")
+        serverState.capabilitiesShouldThrow = true
+
+        const result = yield* mcp.add("defective-server", {
+          type: "local",
+          command: ["echo", "test"],
+        })
+
+        expect(statusName(result.status, "defective-server")).toBe("failed")
+        expect((yield* mcp.status())["defective-server"]).toEqual({
+          status: "failed",
+          error: "capability discovery failed",
+        })
+        expect(serverState.closed).toBe(true)
+      }),
+    ),
+  { config: { mcp: {} } },
+)
+
+it.instance(
   "falls back when MCP output schema refs fail SDK tool discovery",
   () =>
     MCP.Service.use((mcp: MCPNS.Interface) =>
@@ -704,7 +796,10 @@ it.instance(
       Effect.gen(function* () {
         lastCreatedClientName = "resource-server"
         const serverState = getOrCreateClientState("resource-server")
-        serverState.resources = [{ name: "my-resource", uri: "file:///test.txt", description: "A test resource" }]
+        serverState.resources = [
+          { name: "my-resource", uri: "file:///test.txt", description: "A test resource" },
+          { name: "my-resource", uri: "ui://component-state", description: "A second resource with same name" },
+        ]
 
         yield* mcp.add("resource-server", {
           type: "local",
@@ -712,10 +807,10 @@ it.instance(
         })
 
         const resources = yield* mcp.resources()
-        expect(Object.keys(resources).length).toBe(1)
-        const key = Object.keys(resources)[0]
-        expect(key).toContain("resource-server")
-        expect(key).toContain("my-resource")
+        expect(Object.keys(resources)).toEqual([
+          "resource-server:file:///test.txt",
+          "resource-server:ui://component-state",
+        ])
       }),
     ),
   {
@@ -728,6 +823,29 @@ it.instance(
       },
     },
   },
+)
+
+it.instance(
+  "uses per-server timeouts for prompt and resource requests",
+  () =>
+    MCP.Service.use((mcp: MCPNS.Interface) =>
+      Effect.gen(function* () {
+        lastCreatedClientName = "timeout-server"
+        const serverState = getOrCreateClientState("timeout-server")
+
+        yield* mcp.add("timeout-server", {
+          type: "local",
+          command: ["echo", "test"],
+          timeout: 2500,
+        })
+        yield* mcp.getPrompt("timeout-server", "test")
+        yield* mcp.readResource("timeout-server", "test://resource")
+
+        expect(serverState.getPromptTimeout).toBe(2500)
+        expect(serverState.readResourceTimeout).toBe(2500)
+      }),
+    ),
+  { config: { mcp: {}, experimental: { mcp_timeout: 5000 } } },
 )
 
 it.instance(
@@ -748,7 +866,7 @@ it.instance(
         expect(statusName(result.status, "resource-only-server")).toBe("connected")
         expect(serverState.listToolsCalls).toBe(0)
         expect(Object.keys(yield* mcp.tools())).toHaveLength(0)
-        expect(Object.keys(yield* mcp.resources())).toEqual(["resource-only-server:docs"])
+        expect(Object.keys(yield* mcp.resources())).toEqual(["resource-only-server:docs://readme"])
         expect(serverState.listResourcesCalls).toBe(1)
         expect(serverState.listPromptsCalls).toBe(0)
       }),
@@ -798,7 +916,7 @@ it.instance(
 
         expect(statusName(result.status, "tools-only-server")).toBe("connected")
         expect(serverState.listToolsCalls).toBe(1)
-        expect(Object.keys(yield* mcp.tools())).toEqual(["tools-only-server_test_tool"])
+        expect(Object.keys(yield* mcp.tools())).toEqual(["mcp__tools-only-server__test_tool"])
         expect(yield* mcp.prompts()).toEqual({})
         expect(yield* mcp.resources()).toEqual({})
         expect(serverState.listPromptsCalls).toBe(0)
@@ -991,7 +1109,7 @@ it.instance(
         const keys = Object.keys(tools)
 
         // Server name dots should be replaced with underscores
-        expect(keys.some((k) => k.startsWith("my_special-server_"))).toBe(true)
+        expect(keys.some((k) => k.startsWith("mcp__my_special-server__"))).toBe(true)
         // Tool name dots should be replaced with underscores
         expect(keys.some((k) => k.endsWith("tool_b"))).toBe(true)
         expect(keys.length).toBe(2)
