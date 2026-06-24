@@ -1,0 +1,51 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build SDK
+        run: cd packages/sdk/js && bun run script/build.ts
+
+      - name: Build for all platforms
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          Script_release: "true"
+        run: |
+          # The packages/opencode/script/build.ts handles multi-platform build and upload
+          # if the 'Script.release' flag is effectively set.
+          # Looking at the code, it uses 'Script.release' and 'process.env.GH_REPO'.
+
+          # First, we need to make sure a release exists if we are on a tag
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            gh release create "$TAG_NAME" --title "$TAG_NAME" --generate-notes || true
+          else
+            # Manual trigger, create a 'latest' or timestamped release if it doesn't exist
+            RELEASE_NAME="manual-build-$(date +%Y%m%d%H%M)"
+            gh release create "$RELEASE_NAME" --title "$RELEASE_NAME" --notes "Manual build" || true
+          fi
+
+          # Run the build script
+          cd packages/opencode
+          bun run script/build.ts
