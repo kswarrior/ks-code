@@ -27,22 +27,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          Script_release: "true"
+          OPENCODE_RELEASE: "true"
+          OPENCODE_VERSION: "0.0.0-manual-${{ github.run_id }}"
         run: |
-          # The packages/opencode/script/build.ts handles multi-platform build and upload
-          # if the 'Script.release' flag is effectively set.
-          # Looking at the code, it uses 'Script.release' and 'process.env.GH_REPO'.
+          # Create a release
+          RELEASE_TAG="v$OPENCODE_VERSION"
+          gh release create "$RELEASE_TAG" --title "Manual Build $RELEASE_TAG" --notes "Automated multi-platform build" || true
 
-          # First, we need to make sure a release exists if we are on a tag
-          TAG_NAME=${GITHUB_REF#refs/tags/}
-          if [[ $GITHUB_REF == refs/tags/* ]]; then
-            gh release create "$TAG_NAME" --title "$TAG_NAME" --generate-notes || true
-          else
-            # Manual trigger, create a 'latest' or timestamped release if it doesn't exist
-            RELEASE_NAME="manual-build-$(date +%Y%m%d%H%M)"
-            gh release create "$RELEASE_NAME" --title "$RELEASE_NAME" --notes "Manual build" || true
-          fi
-
-          # Run the build script
+          # Run the build script which will build and upload to the release
           cd packages/opencode
           bun run script/build.ts
