@@ -1,0 +1,39 @@
+name: Cleanup Repository
+
+on:
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Delete all branches except protected ones
+        run: |
+          # The branch to keep
+          KEEP_BRANCH="feat/ollama-support-7941959754208012772"
+          # Get the default branch
+          DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | cut -d' ' -f5)
+
+          echo "Keeping branches: $DEFAULT_BRANCH and $KEEP_BRANCH"
+
+          # List all remote branches, filter out the ones to keep, and delete them
+          git branch -r | grep origin/ | grep -v "origin/$DEFAULT_BRANCH" | grep -v "origin/$KEEP_BRANCH" | cut -d/ -f2- | xargs -I {} git push origin --delete {} || true
+
+      - name: Delete all releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # List all releases and delete them
+          gh release list --limit 1000 | cut -f1 | xargs -I {} gh release delete {} --yes || true
+
+      - name: Delete all tags
+        run: |
+          # List all remote tags and delete them
+          git ls-remote --tags origin | awk '{print $2}' | grep -v '\^{}' | xargs -I {} git push origin --delete {} || true
