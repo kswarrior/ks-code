@@ -74,21 +74,10 @@ export function retryable(error: Err, provider: string) {
     // even when the provider SDK doesn't explicitly mark them as retryable.
     if (!error.data.isRetryable && !(status !== undefined && status >= 500)) return undefined
     if (error.data.responseBody?.includes("FreeUsageLimitError")) {
-      return {
-        message: GO_UPSELL_MESSAGE,
-        action: {
-          reason: "free_tier_limit",
-          provider,
-          title: "Free limit reached",
-          message: "Subscribe to OpenCode Go for reliable access to the best open-source models, starting at $5/month.",
-          label: "subscribe",
-          link: GO_UPSELL_URL,
-        },
-      }
+      return { message: error.data.message }
     }
     if (error.data.responseBody?.includes("GoUsageLimitError")) {
       const body = parseJSON(error.data.responseBody)
-      const workspace = str(body?.metadata?.workspace)
       const limitName = str(body?.metadata?.limitName)
       const retryAfter = num(error.data.responseHeaders?.["retry-after"])
       const resetIn = iife(() => {
@@ -104,20 +93,8 @@ export function retryable(error: Err, provider: string) {
         return minutes > 0 ? unit(minutes, "minute") : "less than a minute"
       })
 
-      const message = `${limitName ? `${limitName} usage limit` : "Usage limit"} reached. It will reset in ${resetIn}. To continue using this model now, enable usage from your available balance`
-
-      const link = `https://opencode.ai/workspace/${workspace}/go`
-      return {
-        message: `${message} - ${link}`,
-        action: {
-          reason: "account_rate_limit",
-          provider,
-          title: "Go limit reached",
-          message,
-          label: "open settings",
-          link,
-        },
-      }
+      const message = `${limitName ? `${limitName} usage limit` : "Usage limit"} reached. It will reset in ${resetIn}.`
+      return { message }
     }
     return { message: error.data.message.includes("Overloaded") ? "Provider is overloaded" : error.data.message }
   }

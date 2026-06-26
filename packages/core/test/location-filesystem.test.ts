@@ -101,7 +101,7 @@ describe("FileSystem", () => {
   it.live("pages large UTF-8 text files by line with continuation", () =>
     withTmp((directory) =>
       Effect.gen(function* () {
-        const lines = Array.from({ length: 30 }, (_, index) => `line-${index + 1}-é`.padEnd(2_000, "x"))
+        const lines = Array.from({ length: 300 }, (_, index) => `line-${index + 1}-é`.padEnd(2_000, "x"))
         yield* Effect.promise(() => fs.writeFile(path.join(directory, "large.txt"), lines.join("\n")))
         const service = yield* FileSystem.Service
         const input = { path: RelativePath.make("large.txt") }
@@ -123,11 +123,11 @@ describe("FileSystem", () => {
           truncated: true,
           next: next + 1,
         })
-        expect(yield* service.readTool(input, { offset: 30 })).toEqual({
+        expect(yield* service.readTool(input, { offset: 300 })).toEqual({
           type: "text-page",
-          content: lines[29],
+          content: lines[299],
           mime: "text/plain",
-          offset: 30,
+          offset: 300,
           truncated: false,
         })
       }).pipe(provide(directory)),

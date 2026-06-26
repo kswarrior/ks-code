@@ -21,8 +21,8 @@ export const ReadInput = Schema.Struct({
 })
 export type ReadInput = typeof ReadInput.Type
 
-export const MAX_READ_LINES = 2_000
-export const MAX_READ_BYTES = 50 * 1024
+export const MAX_READ_LINES = 10_000
+export const MAX_READ_BYTES = 500 * 1024
 export const READ_SAMPLE_BYTES = 4 * 1024
 export const MAX_MEDIA_INGEST_BYTES = 20 * 1024 * 1024
 const MAX_LINE_LENGTH = 2_000
