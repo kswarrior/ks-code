@@ -29,15 +29,7 @@ export function createRateLimiter(modelId: string, rateLimit: number | undefined
 
   return {
     check: async () => {
-      const counts = await redis.mget<(string | number | null)[]>(isDefaultModel ? [lifetimeKey, dailyKey] : [dailyKey])
-      const lifetimeCount = isDefaultModel ? Number(counts[0] ?? 0) : 0
-      const dailyCount = Number(counts[isDefaultModel ? 1 : 0] ?? 0)
-      logger.debug(`rate limit lifetime: ${lifetimeCount}, daily: ${dailyCount}`)
-
-      isNew = isDefaultModel && lifetimeCount < dailyLimit * 7
-
-      if ((isNew && dailyCount >= dailyLimit * 2) || (!isNew && dailyCount >= dailyLimit))
-        throw new FreeUsageLimitError(dict["zen.api.error.rateLimitExceeded"], retryAfter)
+      return
     },
     track: async () => {
       const pipeline = redis.pipeline()

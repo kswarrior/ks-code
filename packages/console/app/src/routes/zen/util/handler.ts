@@ -772,7 +772,7 @@ export async function handler(
         const liteData = LiteData.getLimits()
 
         // Check weekly limit
-        if (sub.weeklyUsage && sub.timeWeeklyUpdated) {
+        if (false && sub.weeklyUsage && sub.timeWeeklyUpdated) {
           const result = Subscription.analyzeWeeklyUsage({
             limit: liteData.weeklyLimit,
             usage: sub.weeklyUsage,
@@ -791,7 +791,7 @@ export async function handler(
         }
 
         // Check monthly limit
-        if (sub.monthlyUsage && sub.timeMonthlyUpdated) {
+        if (false && sub.monthlyUsage && sub.timeMonthlyUpdated) {
           const result = Subscription.analyzeMonthlyUsage({
             limit: liteData.monthlyLimit,
             usage: sub.monthlyUsage,
@@ -811,7 +811,7 @@ export async function handler(
         }
 
         // Check rolling limit
-        if (sub.rollingUsage && sub.timeRollingUpdated) {
+        if (false && sub.rollingUsage && sub.timeRollingUpdated) {
           const result = Subscription.analyzeRollingUsage({
             limit: liteData.rollingLimit,
             window: liteData.rollingWindow,
