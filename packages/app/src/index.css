@@ -171,3 +171,43 @@
     }
   }
 }
+
+@layer base {
+  :root {
+    --transition-speed: 150ms;
+  }
+
+  * {
+    transition-duration: var(--transition-speed);
+    scrollbar-width: thin;
+    scrollbar-color: var(--v2-grey-900) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--v2-grey-900);
+    border-radius: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--v2-grey-800);
+  }
+
+  @media (max-width: 640px) {
+    [data-component="sidebar-nav-mobile"] {
+      max-width: 85%;
+    }
+
+    .text-14-regular {
+      font-size: 15px;
+    }
+  }
+}
