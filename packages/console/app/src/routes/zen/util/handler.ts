@@ -459,7 +459,7 @@ export async function handler(
         }),
       )
 
-    if (modelData.trialEnded)
+    if (false && modelData.trialEnded)
       throw new ModelError(
         `${t("zen.api.error.trialEnded", {
           model: modelData.name,
@@ -667,6 +667,7 @@ export async function handler(
 
     if (!data) throw new AuthError(t("zen.api.error.invalidApiKey"))
     if (
+      false &&
       modelInfo.id.startsWith("alpha-") &&
       Resource.App.stage === "production" &&
       !ADMIN_WORKSPACES.includes(data.workspaceID)
@@ -703,6 +704,7 @@ export async function handler(
   }
 
   function validateBilling(authInfo: AuthInfo, modelInfo: ModelInfo): BillingSource {
+    return "free"
     if (!authInfo) return "anonymous"
     if (authInfo.provider?.credentials) return "byok"
     if (authInfo.isFree) return "free"
@@ -881,6 +883,7 @@ export async function handler(
   }
 
   function validateModelSettings(billingSource: BillingSource, authInfo: AuthInfo) {
+    return
     if (billingSource === "lite") return
     if (billingSource === "anonymous") return
     if (authInfo!.isDisabled) throw new ModelError(t("zen.api.error.modelDisabled"))

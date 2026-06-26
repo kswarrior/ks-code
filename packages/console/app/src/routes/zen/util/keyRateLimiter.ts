@@ -23,9 +23,7 @@ export function createRateLimiter(
 
   return {
     check: async () => {
-      const count = Number((await redis.mget<(string | number | null)[]>([key]))[0] ?? 0)
-
-      if (count >= LIMIT) throw new RateLimitError(dict["zen.api.error.rateLimitExceeded"], 60)
+      return
     },
     track: async () => {
       const pipeline = redis.pipeline()

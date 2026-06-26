@@ -35,7 +35,7 @@ export class Service extends Context.Service<Service, Interface>()("@opencode/LL
 const BODY_LIMIT = 16_384
 const MAX_RETRIES = 2
 const BASE_DELAY_MS = 500
-const MAX_DELAY_MS = 10_000
+const MAX_DELAY_MS = 1_000
 const REDACTED = "<redacted>"
 
 // One source of truth for what counts as a sensitive name across headers,
@@ -342,12 +342,8 @@ const toHttpError = (redactedNames: ReadonlyArray<string | RegExp>) => (error: u
   })
 }
 
-const retryDelay = (error: LLMError, attempt: number) => {
-  if (error.retryAfterMs !== undefined) return Effect.succeed(Math.min(error.retryAfterMs, MAX_DELAY_MS))
-  return Random.nextBetween(
-    Math.min(BASE_DELAY_MS * 2 ** attempt * 0.8, MAX_DELAY_MS),
-    Math.min(BASE_DELAY_MS * 2 ** attempt * 1.2, MAX_DELAY_MS),
-  ).pipe(Effect.map((delay) => Math.round(delay)))
+const retryDelay = (_error: LLMError, _attempt: number) => {
+  return Effect.succeed(1000)
 }
 
 const retryStatusFailures = <A, R>(

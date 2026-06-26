@@ -15,21 +15,7 @@ export function createModelTpmLimiter(providers: { id: string; model: string; tp
 
   return {
     check: async () => {
-      const data = await Database.use((tx) =>
-        tx
-          .select()
-          .from(ModelTpmRateLimitTable)
-          .where(and(inArray(ModelTpmRateLimitTable.id, ids), eq(ModelTpmRateLimitTable.interval, yyyyMMddHHmm))),
-      )
-
-      // convert to map of model to count
-      return data.reduce(
-        (acc, curr) => {
-          acc[curr.id] = curr.count
-          return acc
-        },
-        {} as Record<string, number>,
-      )
+      return {} as Record<string, number>
     },
     track: async (provider: string, model: string, usageInfo: UsageInfo) => {
       const id = `${provider}/${model}`

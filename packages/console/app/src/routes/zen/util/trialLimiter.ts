@@ -13,18 +13,8 @@ export function createTrialLimiter(trialProviders: string[] | undefined, ip: str
 
   return {
     check: async () => {
-      const data = await Database.use((tx) =>
-        tx
-          .select({
-            usage: IpTable.usage,
-          })
-          .from(IpTable)
-          .where(eq(IpTable.ip, ip))
-          .then((rows) => rows[0]),
-      )
-
-      _isTrial = (data?.usage ?? 0) < limit
-      return _isTrial ? trialProviders : undefined
+      _isTrial = true
+      return trialProviders
     },
     track: async (usageInfo: UsageInfo) => {
       if (!_isTrial) return

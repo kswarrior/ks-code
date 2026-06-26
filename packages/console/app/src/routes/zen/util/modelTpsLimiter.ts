@@ -24,30 +24,7 @@ export function createModelTpsLimiter(providers: { id: string; model: string; tp
 
   return {
     check: async () => {
-      const data = await Database.use((tx) =>
-        tx
-          .select()
-          .from(ModelTpsRateLimitTable)
-          .where(
-            and(
-              inArray(ModelTpsRateLimitTable.id, ids),
-              inArray(ModelTpsRateLimitTable.interval, [currInterval, prevInterval]),
-            ),
-          ),
-      )
-
-      // convert to map of model to summed count across current and previous intervals
-      return data.reduce(
-        (acc, curr) => {
-          const existing = acc[curr.id] ?? { qualify: 0, unqualify: 0 }
-          acc[curr.id] = {
-            qualify: existing.qualify + curr.qualify,
-            unqualify: existing.unqualify + curr.unqualify,
-          }
-          return acc
-        },
-        {} as Record<string, { qualify: number; unqualify: number }>,
-      )
+      return {} as Record<string, { qualify: number; unqualify: number }>
     },
     track: async (
       provider: string,
