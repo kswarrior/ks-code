@@ -84,7 +84,7 @@ import { toLLMMessages } from "./to-llm-message"
  */
 
 // QUESTION: Did this exist previously, or did we add this limit? Does it make sense?
-const MAX_STEPS = 100
+const MAX_STEPS = 50
 
 export const layer = Layer.effect(
   Service,

@@ -3185,7 +3185,7 @@ describe("SessionRunnerLLM", () => {
       executions.length = 0
       streamGate = undefined
       streamStarted = undefined
-      responses = Array.from({ length: 100 }, (_, index) => [
+      responses = Array.from({ length: 50 }, (_, index) => [
         LLMEvent.stepStart({ index: 0 }),
         LLMEvent.toolCall({ id: `call-echo-${index}`, name: "echo", input: { text: `${index}` } }),
         LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
@@ -3194,9 +3194,9 @@ describe("SessionRunnerLLM", () => {
 
       const failure = yield* session.resume(sessionID).pipe(Effect.flip)
 
-      expect(failure).toMatchObject({ _tag: "SessionRunner.StepLimitExceededError", sessionID, limit: 100 })
-      expect(requests).toHaveLength(100)
-      expect(executions).toHaveLength(100)
+      expect(failure).toMatchObject({ _tag: "SessionRunner.StepLimitExceededError", sessionID, limit: 50 })
+      expect(requests).toHaveLength(50)
+      expect(executions).toHaveLength(50)
     }),
   )
 
@@ -3208,7 +3208,7 @@ describe("SessionRunnerLLM", () => {
       yield* session.prompt({ sessionID, prompt: new Prompt({ text: "Loop forever" }), resume: false })
 
       requests.length = 0
-      responses = Array.from({ length: 100 }, (_, index) => [
+      responses = Array.from({ length: 50 }, (_, index) => [
         LLMEvent.stepStart({ index: 0 }),
         LLMEvent.toolCall({ id: `call-capped-${index}`, name: "echo", input: { text: `${index}` } }),
         LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
@@ -3226,7 +3226,7 @@ describe("SessionRunnerLLM", () => {
       streamStarted = undefined
       yield* Effect.yieldNow
 
-      expect(requests).toHaveLength(100)
+      expect(requests).toHaveLength(50)
     }),
   )
 
@@ -3238,7 +3238,7 @@ describe("SessionRunnerLLM", () => {
 
       requests.length = 0
       responses = [
-        ...Array.from({ length: 99 }, (_, index) => [
+        ...Array.from({ length: 49 }, (_, index) => [
           LLMEvent.stepStart({ index: 0 }),
           LLMEvent.toolCall({ id: `call-terminal-${index}`, name: "echo", input: { text: `${index}` } }),
           LLMEvent.stepFinish({ index: 0, reason: "tool-calls" }),
@@ -3253,7 +3253,7 @@ describe("SessionRunnerLLM", () => {
 
       yield* session.resume(sessionID)
 
-      expect(requests).toHaveLength(100)
+      expect(requests).toHaveLength(50)
     }),
   )
 

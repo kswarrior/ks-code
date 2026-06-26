@@ -2373,7 +2373,7 @@ export default function Layout(props: ParentProps) {
       <div class="relative bg-background-base flex-1 min-h-0 min-w-0 flex flex-col select-none [&_input]:select-text [&_textarea]:select-text [&_[contenteditable]]:select-text">
         {autoselecting() ?? ""}
         <Titlebar update={titlebarUpdate} />
-        <Show when={updateVersion() !== undefined}>
+        <Show when={false && updateVersion() !== undefined}>
           <UpdateAvailableToast version={updateVersion() ?? ""} install={installUpdate} language={language} />
         </Show>
         <div class="flex-1 min-h-0 min-w-0 flex">
